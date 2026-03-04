@@ -1,166 +1,155 @@
-import React, { useState, useEffect } from 'react';
-import { db } from '../api/firebase'; 
-import { collection, addDoc, getDocs, deleteDoc, doc, serverTimestamp, query, orderBy, updateDoc } from 'firebase/firestore';
+import React, { useState } from 'react';
+import { db } from '../api/firebase'; // 설정하신 firebase 파일 경로 확인
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import imageCompression from 'browser-image-compression'; // 이미지 압축 라이브러리
 
 function AdminPage() {
-  const [isAuthorized, setIsAuthorized] = useState(false); // 인증 상태
-  const [password, setPassword] = useState(''); // 입력 비번
-  
   const [name, setName] = useState('');
-  const [originalPrice, setOriginalPrice] = useState('');
   const [price, setPrice] = useState('');
-  const [tag, setTag] = useState('타임세일');
-  const [imageUrl, setImageUrl] = useState('');
-  const [products, setProducts] = useState([]);
-  const [noticeInput, setNoticeInput] = useState('');
-  const [editingId, setEditingId] = useState(null); 
+  const [description, setDescription] = useState('');
+  const [imageUrl, setImageUrl] = useState(''); // 압축된 이미지의 Base64 데이터 저장
+  const [isCompressing, setIsCompressing] = useState(false); // 압축 중 상태 표시
 
-  // 🔒 비밀번호 확인 함수 (선생님만 아는 번호로 수정하세요)
-  const handleLogin = (e) => {
-    e.preventDefault();
-    if (password === 'gowa15987') { // 여기에 사용할 비밀번호를 적으세요
-      setIsAuthorized(true);
-    } else {
-      alert('비밀번호가 틀렸습니다.');
-      setPassword('');
+  // ✨ 이미지 선택 및 자동 압축 함수
+  const handleImageChange = async (e) => {
+    const imageFile = e.target.files[0];
+    if (!imageFile) return;
+
+    setIsCompressing(true); // "압축 중..." 표시 시작
+
+    // ⚙️ 압축 옵션 (5,000명 접속 대비 최적화)
+    const options = {
+      maxSizeMB: 0.2,          // 최대 200KB로 제한 (용량 획기적 절감)
+      maxWidthOrHeight: 800,   // 가로세로 최대 800px (모바일 확인용으로 충분)
+      useWebWorker: true,
+    };
+
+    try {
+      // 1. 이미지 압축 실행
+      const compressedFile = await imageCompression(imageFile, options);
+      
+      // 2. 압축된 파일을 미리보기 및 저장용 Base64 문자열로 변환
+      const reader = new FileReader();
+      reader.readAsDataURL(compressedFile);
+      reader.onloadend = () => {
+        setImageUrl(reader.result); // 변환된 데이터를 상태에 저장
+        setIsCompressing(false);    // "압축 완료"
+      };
+    } catch (error) {
+      console.error("이미지 압축 오류:", error);
+      alert("이미지 처리 중 문제가 발생했습니다.");
+      setIsCompressing(false);
     }
   };
 
-  const fetchProducts = async () => {
-    const q = query(collection(db, "products"), orderBy("createdAt", "desc"));
-    const querySnapshot = await getDocs(q);
-    setProducts(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-  };
-
-  useEffect(() => { 
-    if (isAuthorized) fetchProducts(); 
-  }, [isAuthorized]);
-
-  // --- 기존 기능 로직 (동일) ---
-  const handleUpdateNotice = async () => {
-    if (!noticeInput) return alert("공지 내용을 입력하세요.");
-    try {
-      await updateDoc(doc(db, "settings", "notice"), { text: noticeInput });
-      alert("📢 공지가 변경되었습니다!");
-      setNoticeInput('');
-    } catch (e) { alert("공지 수정 실패!"); }
-  };
-
-  const startEdit = (item) => {
-    setEditingId(item.id);
-    setName(item.name);
-    setOriginalPrice(item.originalPrice);
-    setPrice(item.price);
-    setTag(item.tag);
-    setImageUrl(item.imageUrl);
-    window.scrollTo(0, 0);
-  };
-
+  // 🚀 상품 등록 함수 (Firebase 전송)
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const oPrice = parseInt(originalPrice.toString().replace(/[^0-9]/g, '')) || 0;
-    const sPrice = parseInt(price.toString().replace(/[^0-9]/g, '')) || 0;
-    const discountRate = oPrice > 0 ? Math.round(((oPrice - sPrice) / oPrice) * 100) : 0;
+    if (!name || !price || !imageUrl) {
+      alert("상품명, 가격, 사진은 필수입니다!");
+      return;
+    }
 
     try {
-      if (editingId) {
-        await updateDoc(doc(db, "products", editingId), { name, originalPrice, price, discountRate, tag, imageUrl });
-        alert("✅ 수정 완료!");
-        setEditingId(null);
-      } else {
-        await addDoc(collection(db, "products"), { name, originalPrice, price, discountRate, tag, imageUrl, isSoldOut: false, createdAt: serverTimestamp() });
-        alert("✅ 등록 완료!");
-      }
-      setName(''); setOriginalPrice(''); setPrice(''); setImageUrl('');
-      fetchProducts();
-    } catch (e) { alert("작업 실패!"); }
-  };
-
-  const handleToggleSoldOut = async (id, currentStatus) => {
-    await updateDoc(doc(db, "products", id), { isSoldOut: !currentStatus });
-    fetchProducts();
-  };
-
-  const handleDelete = async (id) => {
-    if (window.confirm("정말 삭제하시겠습니까?")) {
-      await deleteDoc(doc(doc(db, "products", id)));
-      fetchProducts();
+      await addDoc(collection(db, "products"), {
+        name,
+        price: Number(price),
+        description,
+        imageUrl, // 압축된 이미지 데이터가 저장됨
+        createdAt: serverTimestamp(),
+      });
+      alert("상품이 성공적으로 등록되었습니다!");
+      // 등록 후 입력창 초기화
+      setName('');
+      setPrice('');
+      setDescription('');
+      setImageUrl('');
+    } catch (error) {
+      console.error("등록 오류:", error);
+      alert("상품 등록에 실패했습니다.");
     }
   };
 
-  // 1. 로그인 전 화면
-  if (!isAuthorized) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#f4f4f4' }}>
-        <div style={{ padding: '30px', backgroundColor: 'white', borderRadius: '15px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', textAlign: 'center' }}>
-          <h3 style={{ color: '#da291c', marginBottom: '20px' }}>롯데슈퍼 신정점<br/>관리자 인증</h3>
-          <form onSubmit={handleLogin}>
-            <input 
-              type="password" 
-              value={password} 
-              onChange={(e) => setPassword(e.target.value)} 
-              placeholder="비밀번호 입력" 
-              style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '5px', border: '1px solid #ddd', boxSizing: 'border-box' }}
-            />
-            <button type="submit" style={{ width: '100%', padding: '12px', backgroundColor: '#da291c', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>
-              관리자 접속
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
-  // 2. 로그인 후 화면 (기존 관리자 페이지)
   return (
-    <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto', fontFamily: 'sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ color: '#da291c' }}>🍎 관리자 모드</h2>
-        <button onClick={() => setIsAuthorized(false)} style={{ padding: '5px 10px', fontSize: '12px' }}>로그아웃</button>
-      </div>
+    <div style={{ padding: '20px', maxWidth: '500px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+      <h2 style={{ textAlign: 'center', color: '#333' }}>🛒 롯데슈퍼 신정점 관리자</h2>
+      <p style={{ fontSize: '12px', color: '#666', textAlign: 'center' }}>상품을 등록하면 앱에 즉시 반영됩니다.</p>
       
-      {/* (이하 공지 수정 및 등록 폼 코드는 이전과 동일하므로 생략하지만 실제 파일엔 포함되어야 합니다) */}
-      {/* ... 기존 내용 ... */}
-      <div style={{ marginBottom: '25px', padding: '15px', backgroundColor: '#333', borderRadius: '10px', color: '#fff' }}>
-        <h4 style={{ margin: '0 0 10px 0', fontSize: '14px' }}>📢 실시간 배너 문구 수정</h4>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <input type="text" value={noticeInput} onChange={(e) => setNoticeInput(e.target.value)} placeholder="공지 내용" style={{ flex: 1, padding: '10px', borderRadius: '5px' }} />
-          <button onClick={handleUpdateNotice} style={{ padding: '10px 15px', backgroundColor: '#da291c', color: 'white', border: 'none', borderRadius: '5px' }}>반영</button>
-        </div>
-      </div>
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        {/* 상품명 */}
+        <input 
+          type="text" 
+          placeholder="상품명 (예: 신선한 배추 1망)" 
+          value={name} 
+          onChange={(e) => setName(e.target.value)} 
+          style={inputStyle} 
+        />
 
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '30px', padding: '15px', border: '2px solid' + (editingId ? '#007bff' : '#ddd'), borderRadius: '10px' }}>
-        <h4 style={{ margin: '0 0 5px 0' }}>{editingId ? "✏️ 수정 중" : "📦 신규 등록"}</h4>
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="상품명" required style={{ padding: '10px' }} />
-        <input type="text" value={originalPrice} onChange={(e) => setOriginalPrice(e.target.value)} placeholder="정상가" required style={{ padding: '10px' }} />
-        <input type="text" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="할인가" required style={{ padding: '10px' }} />
-        <select value={tag} onChange={(e) => setTag(e.target.value)} style={{ padding: '10px' }}>
-          <option value="타임세일">타임세일</option>
-          <option value="임박할인">임박할인</option>
-          <option value="기획상품">기획상품</option>
-        </select>
-        <input type="text" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="이미지 URL" style={{ padding: '10px' }} />
-        <button type="submit" style={{ padding: '15px', backgroundColor: editingId ? '#007bff' : '#da291c', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 'bold' }}>
-          {editingId ? "수정 완료" : "상품 등록"}
+        {/* 가격 */}
+        <input 
+          type="number" 
+          placeholder="가격 (숫자만 입력)" 
+          value={price} 
+          onChange={(e) => setPrice(e.target.value)} 
+          style={inputStyle} 
+        />
+
+        {/* 설명 */}
+        <textarea 
+          placeholder="상품 상세 설명 (세일 정보 등)" 
+          value={description} 
+          onChange={(e) => setDescription(e.target.value)} 
+          style={{ ...inputStyle, height: '80px' }} 
+        />
+
+        {/* 사진 선택 (파일 업로드 방식) */}
+        <div style={{ border: '1px dashed #ccc', padding: '10px', borderRadius: '5px' }}>
+          <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: 'bold' }}>
+            📸 상품 사진 선택 {isCompressing && <span style={{ color: 'blue' }}>(압축 중...)</span>}
+          </label>
+          <input 
+            type="file" 
+            accept="image/*" 
+            onChange={handleImageChange} 
+            style={{ width: '100%' }}
+          />
+          {imageUrl && (
+            <div style={{ marginTop: '10px', textAlign: 'center' }}>
+              <img src={imageUrl} alt="미리보기" style={{ width: '150px', borderRadius: '8px', border: '1px solid #eee' }} />
+              <p style={{ fontSize: '11px', color: '#27ae60' }}>용량 최적화 완료 ✅</p>
+            </div>
+          )}
+        </div>
+
+        {/* 등록 버튼 */}
+        <button 
+          type="submit" 
+          disabled={isCompressing}
+          style={{ 
+            backgroundColor: isCompressing ? '#ccc' : '#e60012', 
+            color: 'white', 
+            padding: '12px', 
+            border: 'none', 
+            borderRadius: '5px', 
+            fontSize: '16px', 
+            fontWeight: 'bold',
+            cursor: 'pointer' 
+          }}
+        >
+          {isCompressing ? '이미지 처리 중...' : '상품 등록하기'}
         </button>
       </form>
-
-      <h3>진열 상품 ({products.length})</h3>
-      {products.map(item => (
-        <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderBottom: '1px solid #eee' }}>
-          <div>
-            <strong>{item.isSoldOut ? "[품절] " : ""}{item.name}</strong><br/>
-            <small>{item.originalPrice} → {item.price}</small>
-          </div>
-          <div style={{ display: 'flex', gap: '5px' }}>
-            <button onClick={() => startEdit(item)} style={{ fontSize: '11px', padding: '5px' }}>수정</button>
-            <button onClick={() => handleToggleSoldOut(item.id, item.isSoldOut)} style={{ fontSize: '11px', padding: '5px' }}>{item.isSoldOut ? "판매" : "품절"}</button>
-            <button onClick={() => handleDelete(item.id)} style={{ fontSize: '11px', padding: '5px', color: 'red' }}>삭제</button>
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
+
+// 공통 스타일
+const inputStyle = {
+  padding: '12px',
+  fontSize: '15px',
+  borderRadius: '5px',
+  border: '1px solid #ddd',
+  outline: 'none'
+};
 
 export default AdminPage;
