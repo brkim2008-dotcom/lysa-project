@@ -1,0 +1,37 @@
+/* 기본 리셋 */
+body, html {
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden; /* 가로 스크롤 방지 */
+}
+
+#root {
+  width: 100%;
+  margin: 0 auto;
+  text-align: center;
+}
+
+/* 🏃 전광판 애니메이션 (가장 확실한 방법) */
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
+
+.marquee-container {
+  background-color: #000;
+  color: #FFD700;
+  padding: 12px 0;
+  overflow: hidden;
+  white-space: nowrap;
+  position: relative;
+  font-weight: bold;
+  font-size: 18px;
+  border-bottom: 2px solid #da291c;
+  width: 100%;
+}
+
+.marquee-text {
+  display: inline-block;
+  padding-left: 100%; 
+  animation: marquee 20s linear infinite; /* 20초로 속도 조절 */
+}

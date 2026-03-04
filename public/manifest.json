@@ -1,0 +1,25 @@
+{
+  "short_name": "롯데신정",
+  "name": "롯데슈퍼 신정점 실시간특가",
+  "description": "롯데슈퍼 신정점의 실시간 할인 상품을 확인하세요.",
+  "icons": [
+    {
+      "src": "lotteSuper.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "lotteSuper.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#da291c",
+  "background_color": "#ffffff",
+  "orientation": "portrait",
+  "scope": "/"
+}
